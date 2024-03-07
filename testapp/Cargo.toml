@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 tfhe = { path = "../tfhe", version = "0.6.0", features = [ "boolean", "shortint", "integer", "x86_64-unix" ] }
+colored="1.7.1"
