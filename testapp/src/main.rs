@@ -1,7 +1,9 @@
-use tfhe::{ConfigBuilder, generate_keys, set_server_key, FheInt16, FheUint8, FheUint32, FheUint16};
+use tfhe::{generate_keys, set_server_key, ClientKey, ConfigBuilder, FheInt16, FheUint, FheUint16, FheUint16Id, FheUint32, FheUint8};
 use tfhe::prelude::*;
 use std::time::Instant;
 use colored::*;
+
+
 /// Casting test.
 /// 
 /// 
@@ -174,6 +176,33 @@ fn test_shift(){
 }
 
 
+fn blend_a_pixel(a:&FheUint<FheUint16Id>, b:&FheUint<FheUint16Id>,alpha:u16)->FheUint<FheUint16Id>{
+    let left:u16 = 256 - alpha;
+    let top = a * alpha;
+    let bottom = b * left;
+    let mut result = top + bottom;
+    result = result >> 8u16;
+    return result;
+}
+
+fn test_blend_a_pixel(){
+    println!("test_blend_a_pixel start!");
+
+    let config = ConfigBuilder::default().build();
+    let (client_key, sks) = generate_keys(config);
+
+    set_server_key(sks);
+    let alpha: u16= 40;
+    let a = FheUint16::try_encrypt(100u16, &client_key).unwrap();
+    let b = FheUint16::try_encrypt(50u16, &client_key).unwrap();
+
+    let c = blend_a_pixel(&a,&b,alpha*256/100);
+
+    let clear_c:u16 = c.decrypt(&client_key);
+    println!("blend value is {clear_c}");
+    println!("test_blend_a_pixel done!");    
+}
+
 fn test_mul(){
     println!("test_mul done!");    
     let config = ConfigBuilder::default().build();
@@ -221,5 +250,6 @@ fn main() {
     test_cast();
     test_shift();
     test_mul();
+    test_blend_a_pixel();
     println!("main finish!");
 }
