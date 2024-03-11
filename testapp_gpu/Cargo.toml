@@ -7,3 +7,6 @@ edition = "2021"
 
 [dependencies]
 tfhe = { path = "../tfhe", version = "0.6.0", features = [ "boolean", "shortint", "integer", "x86_64-unix" ,"gpu"] }
+colored="1.7.1"
+image = "0.24.9"
+num-complex = "0.4.5"
