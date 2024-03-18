@@ -182,7 +182,7 @@ fn test_shift(){
 
 
 fn test_mul(){
-    println!("test_mul done!");    
+    println!("test_mul start!");    
     let config = ConfigBuilder::default().build();
 
     let (client_key, server_key) = generate_keys(config);
@@ -318,9 +318,9 @@ fn main() {
     // test_encrypt();
     // test_cast();
     // test_shift();
-    // test_mul();
+    test_mul();
     // test_blend_a_pixel();
     //test_load_picture();
-    test_blend_picture();
+    //test_blend_picture();
     println!("main finish!");
 }
