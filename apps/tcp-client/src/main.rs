@@ -6,6 +6,34 @@ use tfhe::{ConfigBuilder, ServerKey, generate_keys, set_server_key, FheUint8,Fhe
 use tfhe::{ ClientKey,  FheInt16, FheUint,  FheUint16Id, FheUint32};
 use tfhe::prelude::*;
 
+
+fn test_eq(){
+
+    let (client_key, server_key) = generate_keys(ConfigBuilder::default());
+
+    set_server_key(server_key);
+    let a = FheUint16::encrypt(5u16, &client_key);
+    let b = FheUint16::encrypt(2u16, &client_key);
+
+    let result = a.eq(&b);
+    let c: FheUint<FheUint16Id> = result.clone().cast_into();
+    let clear_c :u16= c.decrypt(&client_key);
+    println!("decrypted c {}",clear_c);
+    let decrypted = result.decrypt(&client_key) as u8;
+    println!("decrypted  {}",decrypted);
+
+
+    let a = FheUint16::encrypt(2u16, &client_key);
+    let b = FheUint16::encrypt(2u16, &client_key);
+
+    let result = a.eq(&b);
+    let decrypted = result.decrypt(&client_key) as u8;
+    println!("decrypted  {}",decrypted);
+
+
+
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("tcp-client:Hello, world!");
     println!("tcp-client:Creating key!");
@@ -13,6 +41,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ( client_key, server_key) = generate_keys(config);
     let msg1 = 1u16;
     let msg2 = 0u16;
+
+    test_eq();
+
+
     println!("tcp-client:encrypting!");
     let value_1 = FheUint16::encrypt(msg1, &client_key);
     println!("tcp-client:encrypting!");
