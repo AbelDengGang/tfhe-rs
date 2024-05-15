@@ -101,7 +101,8 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
             obj_number:0,
             buff:Vec::new(),
         };
-        receive(&stream,&mut receive_pack);
+        receive(&stream,&mut receive_pack)?; // 当接受出错的时候，会直接从这里退出函数
+
         println!("receive type: {}",receive_pack.pack_type);
         match receive_pack.pack_type{
             PACK_TYPE_MESSAGE => {
@@ -174,11 +175,14 @@ mod tests {
             pack_type:PACK_TYPE_MESSAGE,
             buff : Vec::new(),
         };
-        let str:String=String::from("this from client");
+        let str:String=String::from("This message from client");
         bincode::serialize_into(&mut send_pack.buff, &str).unwrap();
         send(&stream,&send_pack);
         // 等待新线程执行完成
-        handle.join().unwrap();
+        
+        //handle.join().unwrap();
+        thread::sleep(std::time::Duration::from_millis(1000));
+        drop(handle);
 
 
     }
