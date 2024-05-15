@@ -5,6 +5,7 @@ use bincode;
 use tfhe::{ConfigBuilder, ServerKey, generate_keys, set_server_key, FheUint8,FheUint16};
 use tfhe::{ ClientKey,  FheInt16, FheUint,  FheUint16Id, FheUint32};
 use tfhe::prelude::*;
+use drutil;
 
 
 fn test_eq(){
