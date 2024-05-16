@@ -4,6 +4,11 @@ use std::thread;
 use std::time;
 use bincode::{serialize, deserialize};
 use serde::{Serialize, Deserialize};
+use tfhe::{ConfigBuilder, ServerKey, generate_keys, set_server_key, FheUint8,FheUint16};
+use tfhe::{ ClientKey,  FheInt16, FheUint,  FheUint16Id, FheUint32};
+use tfhe::prelude::*;
+
+
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
@@ -16,8 +21,6 @@ const PACK_TYPE_CIPTHERS :u16 = 2;   // 传输一组相同类型的密文，放�
 const PACK_TYPE_CLEARS :u16 = 3;     // 传输一组相同类型的明文，放在Vec里
 const PACK_TYPE_MESSAGE :u16 = 4;    // 传输一个字符串
 const PACK_TYPE_ACK :u16 = 5;         // 如果没有返回值，或者出错了，那么server就会回复一个 ACK, OK或者NG
-const PACK_TYPE_OP1 :u16 = 6;         // 传输操作数1
-const PACK_TYPE_OP2 :u16 = 7;         // 传输操作数2
 const PACK_TYPE_OP  :u16 = 8;         // 传输操作符,是U16 定义在
 const PACK_TYPE_FUN :u16 = 9;         // 传输操作数1，操作数2，操作符
 const PACK_TYPE_KEYS :u16 = 10;       // 传输map映射的key集合，以{{index,类型， 密文},...}的形式传输， index 要唯一。相同index则覆盖
@@ -45,6 +48,25 @@ pub struct CommPackage {
     obj_number:u16,// buffer里包含了几个对象，需要执行几次反序列
     pack_type:u16,  // 包的类型
     buff: Vec<u8>,  // 缓冲区
+}
+
+
+
+fn to_pack_serverkey<T:Serialize>(data:&T,mut pack:&mut CommPackage){
+    pack.obj_number = 1;
+    pack.pack_type = PACK_TYPE_SERVER_KEY;
+    pack.buff = Vec::new();
+    bincode::serialize_into(&mut pack.buff, &data).unwrap();
+}
+
+fn from_pack_serverkey<'de,T>(mut pack:&mut CommPackage) -> T
+    where
+        T: serde::de::DeserializeOwned,
+{
+
+    let mut serialized_data = Cursor::new(pack.buff.clone());
+    let data : T = bincode::deserialize_from(&mut serialized_data).unwrap();
+    data
 }
 
 
@@ -101,25 +123,50 @@ fn from_pack_op<'de,T>(mut data:&'de mut T,mut pack:&mut CommPackage)
 
 
 
-fn to_pack_op1<T:Serialize>(dtype:DataType,data:&T,mut pack:&mut CommPackage){
-    pack.obj_number = 2;
-    pack.pack_type = PACK_TYPE_OP1;
-    pack.buff = Vec::new();
-    bincode::serialize_into(&mut pack.buff, &dtype).unwrap();
-    bincode::serialize_into(&mut pack.buff, &data).unwrap();
-}
+// fn to_pack_op1<T:Serialize>(dtype:DataType,data:&T,mut pack:&mut CommPackage){
+//     pack.obj_number = 2;
+//     pack.pack_type = PACK_TYPE_OP1;
+//     pack.buff = Vec::new();
+//     bincode::serialize_into(&mut pack.buff, &dtype).unwrap();
+//     bincode::serialize_into(&mut pack.buff, &data).unwrap();
+// }
 
-fn from_pack_op1<'de,T>(mut dtype:&mut DataType,mut data:&'de mut T,mut pack:&mut CommPackage)
-    where
-        T: serde::de::DeserializeOwned,
-{
+// fn from_pack_op1<'de,T>(mut dtype:&mut DataType,mut data:&'de mut T,mut pack:&mut CommPackage)
+//     where
+//         T: serde::de::DeserializeOwned,
+// {
 
-    let mut serialized_data = Cursor::new(pack.buff.clone());
-    *dtype = bincode::deserialize_from(&mut serialized_data).unwrap();
-    *data = bincode::deserialize_from(&mut serialized_data).unwrap();
-}
+//     let mut serialized_data = Cursor::new(pack.buff.clone());
+//     *dtype = bincode::deserialize_from(&mut serialized_data).unwrap();
+//     *data = bincode::deserialize_from(&mut serialized_data).unwrap();
+// }
 
 
+// fn to_pack_op2<T:Serialize>(dtype:DataType,data:&T,mut pack:&mut CommPackage){
+//     pack.obj_number = 2;
+//     pack.pack_type = PACK_TYPE_OP1;
+//     pack.buff = Vec::new();
+//     bincode::serialize_into(&mut pack.buff, &dtype).unwrap();
+//     bincode::serialize_into(&mut pack.buff, &data).unwrap();
+// }
+
+
+// 我不知道要如何进行泛化，先用返回固定的类型的函数来处理
+// fn from_pack_op2<'de,T>(mut dtype:&mut DataType,mut pack:&mut CommPackage) -> T
+//     where
+//         T: serde::de::DeserializeOwned,
+// {
+
+//     let mut serialized_data = Cursor::new(pack.buff.clone());
+//     *dtype = bincode::deserialize_from(&mut serialized_data).unwrap();
+//     match dtype{
+//         CiptherUint16 => {
+//             let data :FheUint8 = bincode::deserialize_from(&mut serialized_data).unwrap();
+//             return data
+//         }
+//         default => {let data :FheUint8}
+//     }
+// }
 
 pub fn send(mut stream:&TcpStream , package: &CommPackage )->Result<(), Box<dyn std::error::Error>>{
     // 计算包的大小
@@ -162,6 +209,7 @@ pub fn receive(mut stream:&TcpStream , mut package: &mut CommPackage )->io::Resu
     // 接受包长度
     let mut buffer = [0u8;16];
     stream.read_exact(&mut buffer)?;
+
     let mut total_size = u128::from_ne_bytes(buffer);
     total_size = total_size - (std::mem::size_of_val(&package.pack_type) as u128) - (std::mem::size_of_val(&package.obj_number) as u128);
 
@@ -233,6 +281,17 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
                 to_pack_ack(&String::from("OK"),&mut send_pack);
                 send(&stream,&send_pack).unwrap();
             }
+            PACK_TYPE_SERVER_KEY => {
+                let mut server_key :ServerKey = from_pack_serverkey(&mut receive_pack);
+                set_server_key(server_key);
+                let mut send_pack: CommPackage = CommPackage{
+                    pack_type:PACK_TYPE_UNKNOW,
+                    obj_number:0,
+                    buff:Vec::new(),
+                };
+                to_pack_ack(&String::from("OK"),&mut send_pack);
+                send(&stream,&send_pack).unwrap();
+            }
             default =>{
 
             }
@@ -293,6 +352,9 @@ mod tests {
             println!("Main thread start: {}", i);
             thread::sleep(std::time::Duration::from_millis(1000));
         }
+        let config = ConfigBuilder::default().build();
+        let ( client_key, server_key) = generate_keys(config);
+
         let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
         let mut send_pack:CommPackage = CommPackage{
             obj_number : 1,
@@ -314,8 +376,30 @@ mod tests {
         let mut msg = String::new();
         from_pack_ack(&mut msg, &mut receive_pack);
         println!("From Server: {}",msg);
+
+
+
+        to_pack_serverkey(&server_key,&mut send_pack);
+        send(&stream,&send_pack).unwrap();
+        // 等待新线程执行完成
+        let mut receive_pack: CommPackage = CommPackage{
+            pack_type:PACK_TYPE_UNKNOW,
+            obj_number:0,
+            buff:Vec::new(),
+        };
+        receive(&stream,&mut receive_pack).unwrap(); // 当接受出错的时候，会直接从这里退出函数
+        let mut msg = String::new();
+        from_pack_ack(&mut msg, &mut receive_pack);
+        println!("From Server: {}",msg);
+
+        let msg1 = 1u16;
+        let msg2 = 0u16;
+        let value_1 = FheUint16::encrypt(msg1, &client_key);
+        let value_2 = FheUint16::encrypt(msg2, &client_key);    
+
+
         let op = OP_ADD;
-        to_pack_msg(&op,&mut send_pack);
+        to_pack_op(&op,&mut send_pack);
         send(&stream,&send_pack).unwrap();
         receive(&stream,&mut receive_pack).unwrap(); // 当接受出错的时候，会直接从这里退出函数
         from_pack_ack(&mut msg, &mut receive_pack);
