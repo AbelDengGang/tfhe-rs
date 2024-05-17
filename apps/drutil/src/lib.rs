@@ -16,10 +16,10 @@ pub fn add(left: usize, right: usize) -> usize {
 
 #[allow(dead_code)]
 const PACK_TYPE_UNKNOW :u16 = 0;
-const PACK_TYPE_SERVER_KEY :u16 = 1; // 传输server key
-const PACK_TYPE_CIPTHERS :u16 = 2;   // 传输一组相同类型的密文，放在Vec里
-const PACK_TYPE_CLEARS :u16 = 3;     // 传输一组相同类型的明文，放在Vec里
-const PACK_TYPE_MESSAGE :u16 = 4;    // 传输一个字符串
+const PACK_TYPE_SERVER_KEY :u16 = 1;  // 传输server key
+const PACK_TYPE_CIPTHERTEXTS :u16 = 2;// 传输一组相同类型的密文，放在Vec里
+const PACK_TYPE_PLAINTTEXTS :u16 = 3; // 传输一组相同类型的明文，放在Vec里
+const PACK_TYPE_MESSAGE :u16 = 4;     // 传输一个字符串
 const PACK_TYPE_ACK :u16 = 5;         // 如果没有返回值，或者出错了，那么server就会回复一个 ACK, OK或者NG
 const PACK_TYPE_OP  :u16 = 8;         // 传输操作符,是U16 定义在
 const PACK_TYPE_FUN :u16 = 9;         // 传输操作数1，操作数2，操作符
@@ -51,6 +51,24 @@ pub struct CommPackage {
     buff: Vec<u8>,  // 缓冲区
 }
 
+
+
+fn to_pack_cipthertests<T:Serialize>(dtype: & DataType,data:&T,mut pack:&mut CommPackage){
+    pack.obj_number = 2;
+    pack.pack_type = PACK_TYPE_CIPTHERTEXTS;
+    pack.buff = Vec::new();
+    bincode::serialize_into(&mut pack.buff, &dtype).unwrap();
+    bincode::serialize_into(&mut pack.buff, &data).unwrap();
+}
+
+fn from_pack_cipthertests_u16(mut pack:&CommPackage) ->(DataType,Vec<FheUint16>)
+{
+
+    let mut serialized_data = Cursor::new(pack.buff.clone());
+    let dtype:DataType = bincode::deserialize_from(&mut serialized_data).unwrap();
+    let data : Vec<FheUint16> = bincode::deserialize_from(&mut serialized_data).unwrap();
+    (dtype,data)
+}
 
 
 fn to_pack_serverkey<T:Serialize>(data:&T,mut pack:&mut CommPackage){
@@ -107,7 +125,7 @@ fn from_pack_ack<'de,T>(mut data:&'de mut T,mut pack:&mut CommPackage)
 
 
 fn to_pack_op<T:Serialize,OT:Serialize>(dtype:DataType,op:&T,oprand1:&OT, oprand2:&OT,mut pack:&mut CommPackage){
-    pack.obj_number = 1;
+    pack.obj_number = 4;
     pack.pack_type = PACK_TYPE_OP;
     pack.buff = Vec::new();
     bincode::serialize_into(&mut pack.buff, &op).unwrap();
@@ -207,10 +225,10 @@ pub fn receive(mut stream:&TcpStream , mut package: &mut CommPackage )->io::Resu
     {
         let mut tmp_buffer:Vec<u8> = vec![0; 64*1024];
         let readsize = stream.read(&mut tmp_buffer)?;
-        println!("readsize {}",readsize);
+        //println!("readsize {}",readsize);
         tmp_buffer.truncate(readsize);
         package.buff.append(&mut tmp_buffer);
-        println!("total size {} / {}",package.buff.len() as u128,total_size);
+        //println!("total size {} / {}",package.buff.len() as u128,total_size);
         if package.buff.len() as u128 >=  total_size{
             receiving = false;
         }
@@ -257,13 +275,28 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
                 let oprand1_clr: u16 = oprand1.decrypt(&client_ley);
                 let oprand2_clr: u16 = oprand2.decrypt(&client_ley);
                 println!("receive op: {},oprand1: {}, oprand2:{}",op,oprand1_clr , oprand2_clr);
-                let mut send_pack: CommPackage = CommPackage{
-                    pack_type:PACK_TYPE_UNKNOW,
-                    obj_number:0,
-                    buff:Vec::new(),
-                };
-                to_pack_ack(&String::from("OK"),&mut send_pack);
-                send(&stream,&send_pack).unwrap();
+                match op{
+                    OP_ADD => {
+                        let result = oprand1 + oprand2;
+                        let results = vec![result];
+                        let mut send_pack: CommPackage = CommPackage{
+                            pack_type:PACK_TYPE_UNKNOW,
+                            obj_number:0,
+                            buff:Vec::new(),
+                        };
+                        to_pack_cipthertests(&DataType::CiptherUint16,&results,&mut send_pack);
+                        send(&stream,&send_pack).unwrap();
+                    },
+                    _ => {
+                        let mut send_pack: CommPackage = CommPackage{
+                            pack_type:PACK_TYPE_UNKNOW,
+                            obj_number:0,
+                            buff:Vec::new(),
+                        };
+                        to_pack_ack(&String::from("OK"),&mut send_pack);
+                        send(&stream,&send_pack).unwrap();
+                    }
+                }
             }
             PACK_TYPE_SERVER_KEY => {
                 let mut server_key :ServerKey = from_pack_serverkey(&mut receive_pack);
@@ -412,8 +445,14 @@ mod tests {
         to_pack_op(DataType::CiptherUint16,&op,&value_1,&value_2,&mut send_pack);
         send(&stream,&send_pack).unwrap();
         receive(&stream,&mut receive_pack).unwrap(); // 当接受出错的时候，会直接从这里退出函数
-        from_pack_ack(&mut msg, &mut receive_pack);
-        println!("From Server: {}",msg);
+        if receive_pack.pack_type == PACK_TYPE_ACK{
+            from_pack_ack(&mut msg, &mut receive_pack);
+            println!("From Server: {}",msg);
+        }else{
+            let (dtype, results) = from_pack_cipthertests_u16(&receive_pack);
+            let result_clr: u16 = results[0].decrypt(&client_key);
+            println!("From Server: result len{}, result_clr{}",results.len(),result_clr);        
+        }
 
         // 在主线程中执行的代码, 等待子线程运行
         for i in 1..=3 {
