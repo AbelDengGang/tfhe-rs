@@ -14,7 +14,14 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
             obj_number:0,
             buff:Vec::new(),
         };
-        receive(&stream,&mut receive_pack)?; // 当接受出错的时候，会直接从这里退出函数
+        let result = receive(&stream,&mut receive_pack); // 当接受出错的时候，会直接从这里退出函数
+        match result{
+            Err(e) =>{ 
+                println!("e:{}",e);
+                return Ok(())
+            },
+            Ok(()) =>{}
+        }
 
         println!("receive type: {}",receive_pack.pack_type);
         match receive_pack.pack_type{
