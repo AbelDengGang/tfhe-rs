@@ -15,18 +15,18 @@ pub fn add(left: usize, right: usize) -> usize {
 }
 
 #[allow(dead_code)]
-const PACK_TYPE_UNKNOW :u16 = 0;
-const PACK_TYPE_SERVER_KEY :u16 = 1;  // 传输server key
-const PACK_TYPE_CIPTHERTEXTS :u16 = 2;// 传输一组相同类型的密文，放在Vec里
-const PACK_TYPE_PLAINTTEXTS :u16 = 3; // 传输一组相同类型的明文，放在Vec里
-const PACK_TYPE_MESSAGE :u16 = 4;     // 传输一个字符串
-const PACK_TYPE_ACK :u16 = 5;         // 如果没有返回值，或者出错了，那么server就会回复一个 ACK, OK或者NG
-const PACK_TYPE_OP  :u16 = 8;         // 传输操作符,是U16 定义在
-const PACK_TYPE_FUN :u16 = 9;         // 传输操作数1，操作数2，操作符
-const PACK_TYPE_KEYS :u16 = 10;       // 传输map映射的key集合，以{{index,类型， 密文},...}的形式传输， index 要唯一。相同index则覆盖
-const PACK_TYPE_VALUES :u16 = 11;     // 传输map映射的value集合，以{{index,类型， 密文},...}的形式传输， index 要唯一。相同index则覆盖
-const PACK_TYPE_QUERY_KEY :u16 = 12;  // 在map映射中查询，
-const PACK_TYPE_IN_PROCESS: u16 = 13; // 表示正在处理过程中，客户端接受到这个数据包后面要继续读，直到收到其他的数据包才表明这次通讯结束
+pub const PACK_TYPE_UNKNOW :u16 = 0;
+pub const PACK_TYPE_SERVER_KEY :u16 = 1;  // 传输server key
+pub const PACK_TYPE_CIPTHERTEXTS :u16 = 2;// 传输一组相同类型的密文，放在Vec里
+pub const PACK_TYPE_PLAINTTEXTS :u16 = 3; // 传输一组相同类型的明文，放在Vec里
+pub const PACK_TYPE_MESSAGE :u16 = 4;     // 传输一个字符串
+pub const PACK_TYPE_ACK :u16 = 5;         // 如果没有返回值，或者出错了，那么server就会回复一个 ACK, OK或者NG
+pub const PACK_TYPE_OP  :u16 = 8;         // 传输操作符,是U16 定义在
+pub const PACK_TYPE_FUN :u16 = 9;         // 传输操作数1，操作数2，操作符
+pub const PACK_TYPE_KEYS :u16 = 10;       // 传输map映射的key集合，以{{index,类型， 密文},...}的形式传输， index 要唯一。相同index则覆盖
+pub const PACK_TYPE_VALUES :u16 = 11;     // 传输map映射的value集合，以{{index,类型， 密文},...}的形式传输， index 要唯一。相同index则覆盖
+pub const PACK_TYPE_QUERY_KEY :u16 = 12;  // 在map映射中查询，
+pub const PACK_TYPE_IN_PROCESS: u16 = 13; // 表示正在处理过程中，客户端接受到这个数据包后面要继续读，直到收到其他的数据包才表明这次通讯结束
 const PACK_TYPE_CLIENT_KEY :u16 = 14;  // 传输client key,测试
 
 
@@ -46,14 +46,14 @@ pub enum DataType{
 //#[derive(Debug)] // 导出调试信息
 #[allow(unused_variables)]
 pub struct CommPackage {
-    obj_number:u16,// buffer里包含了几个对象，需要执行几次反序列
-    pack_type:u16,  // 包的类型
-    buff: Vec<u8>,  // 缓冲区
+    pub obj_number:u16,// buffer里包含了几个对象，需要执行几次反序列
+    pub pack_type:u16,  // 包的类型
+    pub buff: Vec<u8>,  // 缓冲区
 }
 
 
 
-fn to_pack_cipthertests<T:Serialize>(dtype: & DataType,data:&T,mut pack:&mut CommPackage){
+pub fn to_pack_cipthertests<T:Serialize>(dtype: & DataType,data:&T,mut pack:&mut CommPackage){
     pack.obj_number = 2;
     pack.pack_type = PACK_TYPE_CIPTHERTEXTS;
     pack.buff = Vec::new();
@@ -61,7 +61,7 @@ fn to_pack_cipthertests<T:Serialize>(dtype: & DataType,data:&T,mut pack:&mut Com
     bincode::serialize_into(&mut pack.buff, &data).unwrap();
 }
 
-fn from_pack_cipthertests_u16(mut pack:&CommPackage) ->(DataType,Vec<FheUint16>)
+pub fn from_pack_cipthertests_u16(mut pack:&CommPackage) ->(DataType,Vec<FheUint16>)
 {
 
     let mut serialized_data = Cursor::new(pack.buff.clone());
@@ -71,14 +71,14 @@ fn from_pack_cipthertests_u16(mut pack:&CommPackage) ->(DataType,Vec<FheUint16>)
 }
 
 
-fn to_pack_serverkey<T:Serialize>(data:&T,mut pack:&mut CommPackage){
+pub fn to_pack_serverkey<T:Serialize>(data:&T,mut pack:&mut CommPackage){
     pack.obj_number = 1;
     pack.pack_type = PACK_TYPE_SERVER_KEY;
     pack.buff = Vec::new();
     bincode::serialize_into(&mut pack.buff, &data).unwrap();
 }
 
-fn from_pack_serverkey<'de,T>(mut pack:&mut CommPackage) -> T
+pub fn from_pack_serverkey<'de,T>(mut pack:&mut CommPackage) -> T
     where
         T: serde::de::DeserializeOwned,
 {
@@ -107,14 +107,14 @@ fn from_pack_clientkey<'de,T>(mut pack:&mut CommPackage) -> T
 }
 
 
-fn to_pack_ack<T:Serialize>(data:&T,mut pack:&mut CommPackage){
+pub fn to_pack_ack<T:Serialize>(data:&T,mut pack:&mut CommPackage){
     pack.obj_number = 1;
     pack.pack_type = PACK_TYPE_ACK;
     pack.buff = Vec::new();
     bincode::serialize_into(&mut pack.buff, &data).unwrap();
 }
 
-fn from_pack_ack<'de,T>(mut data:&'de mut T,mut pack:&mut CommPackage)
+pub fn from_pack_ack<'de,T>(mut data:&'de mut T,mut pack:&mut CommPackage)
     where
         T: serde::de::DeserializeOwned,
 {
@@ -124,7 +124,7 @@ fn from_pack_ack<'de,T>(mut data:&'de mut T,mut pack:&mut CommPackage)
 }
 
 
-fn to_pack_op<T:Serialize,OT:Serialize>(dtype:DataType,op:&T,oprand1:&OT, oprand2:&OT,mut pack:&mut CommPackage){
+pub fn to_pack_op<T:Serialize,OT:Serialize>(dtype:DataType,op:&T,oprand1:&OT, oprand2:&OT,mut pack:&mut CommPackage){
     pack.obj_number = 4;
     pack.pack_type = PACK_TYPE_OP;
     pack.buff = Vec::new();
@@ -134,7 +134,7 @@ fn to_pack_op<T:Serialize,OT:Serialize>(dtype:DataType,op:&T,oprand1:&OT, oprand
     bincode::serialize_into(&mut pack.buff, &oprand2).unwrap();
 }
 
-fn from_pack_op_u16(pack:& CommPackage) ->(u16,DataType,FheUint16,FheUint16){
+pub fn from_pack_op_u16(pack:& CommPackage) ->(u16,DataType,FheUint16,FheUint16){
     let mut serialized_data = Cursor::new(pack.buff.clone());
     let op:u16 = bincode::deserialize_from(&mut serialized_data).unwrap();
     let dtype:DataType = bincode::deserialize_from(&mut serialized_data).unwrap();
@@ -145,7 +145,7 @@ fn from_pack_op_u16(pack:& CommPackage) ->(u16,DataType,FheUint16,FheUint16){
 
 
 
-fn from_pack_msg<'de,T>(mut data:&'de mut T,mut pack:&mut CommPackage)
+pub fn from_pack_msg<'de,T>(mut data:&'de mut T,mut pack:&mut CommPackage)
     where
         T: serde::de::DeserializeOwned,
 {
@@ -155,7 +155,7 @@ fn from_pack_msg<'de,T>(mut data:&'de mut T,mut pack:&mut CommPackage)
 }
 
 
-fn to_pack_msg<T:Serialize>(data:&T,mut pack:&mut CommPackage){
+pub fn to_pack_msg<T:Serialize>(data:&T,mut pack:&mut CommPackage){
     pack.obj_number = 1;
     pack.pack_type = PACK_TYPE_MESSAGE;
     pack.buff = Vec::new();

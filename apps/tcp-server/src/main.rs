@@ -1,48 +1,115 @@
-use std::{net::TcpListener, io::{self,Read, Write,Cursor}};
-use tfhe::{ConfigBuilder, ServerKey, generate_keys, set_server_key, FheUint8};
+use std::{net::{TcpListener,TcpStream}, io::{self,Read, Write,Cursor,Error},thread};
+use tfhe::{ ServerKey,  set_server_key, FheUint8};
 use tfhe::prelude::*;
-fn main() -> io::Result<()> {
-    println!("tcp-server: Hello, world!");
+use drutil::*;
 
-    let listener = TcpListener::bind("127.0.0.1:3000").unwrap();
-    //当有client连接上来时
-    for stream in listener.incoming(){
-        println!("Connection established!");
-        let mut stream = stream.unwrap();
-        let mut buffer = Vec::new();
-        println!("Recieving!");
-        let mut reading: bool = true;
-        let mut size_buffer = [0u8;16];
-        stream.read_exact(&mut size_buffer)?;
-        let total_size = u128::from_ne_bytes(size_buffer.clone());
-        println!("expect size is  {}",total_size);
-        println!("{},{},{},{}",size_buffer[0],size_buffer[1],size_buffer[2],size_buffer[3]);
 
-        while reading
-        {
-            let mut tmp_buffer:Vec<u8> = vec![0; 64*1024];
-            let readsize = stream.read(&mut tmp_buffer)?;
-            println!("readsize {}",readsize);
-            tmp_buffer.truncate(readsize);
-            buffer.append(&mut tmp_buffer);
-            println!("total size {} / {}",buffer.len() as u128,total_size);
-            if buffer.len() as u128 >=  total_size{
-                reading = false;
+fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
+    let mut buf = [0; 512];
+
+
+    loop {
+        let mut receive_pack: CommPackage = CommPackage{
+            pack_type:PACK_TYPE_UNKNOW,
+            obj_number:0,
+            buff:Vec::new(),
+        };
+        receive(&stream,&mut receive_pack)?; // 当接受出错的时候，会直接从这里退出函数
+
+        println!("receive type: {}",receive_pack.pack_type);
+        match receive_pack.pack_type{
+            PACK_TYPE_MESSAGE => {
+                let mut msg:String = String::new();
+                from_pack_msg(&mut msg,&mut receive_pack);
+                println!("receive message: {}",msg);
+
+                let mut send_pack: CommPackage = CommPackage{
+                    pack_type:PACK_TYPE_UNKNOW,
+                    obj_number:0,
+                    buff:Vec::new(),
+                };
+                to_pack_ack(&String::from("OK"),&mut send_pack);
+                send(&stream,&send_pack).unwrap();
+            }
+            PACK_TYPE_OP => {
+                let (op,dtype,oprand1,oprand2) = from_pack_op_u16(&receive_pack);
+                match op{
+                    OP_ADD => {
+                        let result = oprand1 + oprand2;
+                        let results = vec![result];
+                        let mut send_pack: CommPackage = CommPackage{
+                            pack_type:PACK_TYPE_UNKNOW,
+                            obj_number:0,
+                            buff:Vec::new(),
+                        };
+                        to_pack_cipthertests(&DataType::CiptherUint16,&results,&mut send_pack);
+                        send(&stream,&send_pack).unwrap();
+                    },
+                    _ => {
+                        let mut send_pack: CommPackage = CommPackage{
+                            pack_type:PACK_TYPE_UNKNOW,
+                            obj_number:0,
+                            buff:Vec::new(),
+                        };
+                        to_pack_ack(&String::from("OK"),&mut send_pack);
+                        send(&stream,&send_pack).unwrap();
+                    }
+                }
+            }
+            PACK_TYPE_SERVER_KEY => {
+                let mut server_key :ServerKey = from_pack_serverkey(&mut receive_pack);
+                set_server_key(server_key);
+                let mut send_pack: CommPackage = CommPackage{
+                    pack_type:PACK_TYPE_UNKNOW,
+                    obj_number:0,
+                    buff:Vec::new(),
+                };
+                to_pack_ack(&String::from("OK"),&mut send_pack);
+                send(&stream,&send_pack).unwrap();
+            }
+
+            _ =>{
+
             }
         }
-        //let mut buffer = Vec::new();
-        //创建1k的缓存区
-        //let mut buffer = [0;1024];
-        //读取client发过来的内容
-        //stream.read(&mut buffer).unwrap();
-        //原样送回去(相当于netty的EchoServer)
-        //stream.write(&mut buffer).unwrap();
-        let result = server_function(&buffer).unwrap();
-        println!("Sending!");
-        stream.write_all(&result)?;
-        stream.flush()?;
-        println!("Send!");
+
     }
+
+    Ok(())
+}
+
+
+
+fn listen_fn()-> Result<(), Error>{
+    let listener = TcpListener::bind("127.0.0.1:3000")?;
+    let mut thread_vec: Vec<thread::JoinHandle<()>> = Vec::new();
+
+    for stream in listener.incoming() {
+        let stream = stream.expect("failed!");
+        println!("Connection established!");
+        let handle = thread::spawn(move || {
+            handle_client(stream)
+		.unwrap_or_else(|error| eprintln!("{:?}", error));
+        });
+
+        thread_vec.push(handle);
+    }
+
+    for handle in thread_vec {
+        handle.join().unwrap();
+    }
+
+    Ok(())
+}
+
+fn main() -> io::Result<()> {
+    println!("tcp-server: Hello, world!");
+    let handle = thread::spawn(|| {
+        // 在新线程中执行的代码
+        listen_fn()
+
+    });
+    handle.join();
     Ok(())
 }
 
