@@ -195,7 +195,7 @@ impl ServerKey {
     /// let result = sk.trim_start(&enc_s);
     /// let trimmed = ck.decrypt_ascii(&result);
     ///
-    /// assert_eq!(trimmed, "hello world"); // Whitespace at the start is removed
+    /// assert_eq!(trimmed, "hellao world"); // Whitespace at the start is removed
     /// ```
     pub fn trim_start(&self, str: &FheString) -> FheString {
         let mut result = str.clone();

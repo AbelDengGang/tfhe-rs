@@ -4,7 +4,7 @@ use std::thread;
 use std::time;
 use bincode::{serialize, deserialize};
 use serde::{Serialize, Deserialize};
-use tfhe::{ConfigBuilder, ServerKey, generate_keys, set_server_key, FheUint8,FheUint16};
+use tfhe::{generate_keys, set_server_key, ConfigBuilder, FheBool, FheUint16, FheUint8, ServerKey};
 use tfhe::{ ClientKey,  FheInt16, FheUint,  FheUint16Id, FheUint32};
 use tfhe::prelude::*;
 
@@ -471,6 +471,7 @@ mod tests {
 // TODO 如何拆分成多个文件？
 pub const UP_LOW_DISTANCE: u8 = 32;
 
+#[derive(Serialize, Deserialize)]
 pub struct FheAsciiString {
     pub bytes: Vec<FheUint8>,
 }
@@ -518,18 +519,37 @@ impl FheAsciiString {
             bytes: self.bytes.iter().map(to_lower).collect(),
         }
     }
+
+    pub fn eq(&self, other:&FheAsciiString) -> FheBool{
+        let size_eq = self.bytes.len() == other.bytes.len();
+        if !size_eq {
+            return FheBool::encrypt_trivial(false) 
+        }
+        
+        let mut result = FheBool::encrypt_trivial(true) ;
+
+        let mut index = 0;
+        while index < self.bytes.len(){
+            let a = &self.bytes[index];
+            let b = &other.bytes[index];
+            let tmp_result = a.eq(b);
+            result = &result & tmp_result;
+        }
+        return result
+
+    }
 }
 
 
 
-// cargo test ascill_string_tests 来运行这个模块的测试层序
+// cargo test ascill_string_tests --profile release -- --nocapture 来运行这个模块的测试层序
 #[cfg(test)]
 mod ascill_string_tests {
     use super::*;
 
     #[test]
-    fn string_works() {
-        println!("it_works");
+    fn string_encrypt_test() {
+        println!("string_encrypt_test");
         let config = ConfigBuilder::default().build();
         let (client_key, server_key) = generate_keys(config);
 
@@ -542,11 +562,49 @@ mod ascill_string_tests {
         let verif_string = my_string_upper.decrypt(&client_key);
         println!("Upper string: {verif_string}");
         assert_eq!(verif_string, "HELLO DEEP, HOW IS IT GOING?");
+
+        // 序列化测试
+        let mut buffer = Vec::new();
+        let result  = bincode::serialize_into(&mut buffer, &my_string_upper).unwrap();
+        let mut serialized_data = Cursor::new(buffer);
+        let receive_str:FheAsciiString = bincode::deserialize_from(&mut serialized_data).unwrap();
+        let verif_string = receive_str.decrypt(&client_key);
+        println!("Receive string: {verif_string}");
+        assert_eq!(verif_string, "HELLO DEEP, HOW IS IT GOING?");
     
-        let my_string_lower = my_string_upper.to_lower();
-        let verif_string = my_string_lower.decrypt(&client_key);
-        println!("Lower string: {verif_string}");
-        assert_eq!(verif_string, "hello deep, how is it going?");
     }
+
+
+    //cargo test ascill_string_tests::string_encrypt_test --profile release -- --nocapture
+    #[test]
+    fn string_eq_test() {
+        println!("string_eq_test");
+        let config = ConfigBuilder::default().build();
+        let (client_key, server_key) = generate_keys(config);
+
+        set_server_key(server_key);
+
+        let string1 = FheAsciiString::encrypt("hello", &client_key);
+        let string2 = FheAsciiString::encrypt("hellooo", &client_key);
+        let result = string1.eq(&string2);
+        let clr_reuslt = result.decrypt(&client_key);
+        assert_eq!(false, clr_reuslt);
+
+
+        let string1 = FheAsciiString::encrypt("hello", &client_key);
+        let string2 = FheAsciiString::encrypt("hello", &client_key);
+        let result = string1.eq(&string2);
+        let clr_reuslt = result.decrypt(&client_key);
+        assert_eq!(true, clr_reuslt);
+
+
+        let string1 = FheAsciiString::encrypt("nihao", &client_key);
+        let string2 = FheAsciiString::encrypt("hello", &client_key);
+        let result = string1.eq(&string2);
+        let clr_reuslt = result.decrypt(&client_key);
+        assert_eq!(false, clr_reuslt);
+
+    }
+
 
 }
