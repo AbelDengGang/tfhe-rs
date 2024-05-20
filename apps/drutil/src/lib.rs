@@ -9,7 +9,6 @@ use tfhe::{ ClientKey,  FheInt16, FheUint,  FheUint16Id, FheUint32};
 use tfhe::prelude::*;
 
 
-
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
@@ -465,4 +464,89 @@ mod tests {
 
 
     }
+}
+
+
+
+// TODO 如何拆分成多个文件？
+pub const UP_LOW_DISTANCE: u8 = 32;
+
+pub struct FheAsciiString {
+    pub bytes: Vec<FheUint8>,
+}
+
+fn to_upper(c: &FheUint8) -> FheUint8 {
+    c - FheUint8::cast_from(c.gt(96) & c.lt(123)) * UP_LOW_DISTANCE
+}
+
+fn to_lower(c: &FheUint8) -> FheUint8 {
+    c + FheUint8::cast_from(c.gt(64) & c.lt(91)) * UP_LOW_DISTANCE
+}
+
+impl FheAsciiString {
+    pub fn encrypt(string: &str, client_key: &ClientKey) -> Self {
+        assert!(
+            string.chars().all(|char| char.is_ascii()),
+            "The input string must only contain ascii letters"
+        );
+
+        let fhe_bytes: Vec<FheUint8> = string
+            .bytes()
+            .map(|b| FheUint8::encrypt(b, client_key))
+            .collect();
+
+        Self { bytes: fhe_bytes }
+    }
+
+    pub fn decrypt(&self, client_key: &ClientKey) -> String {
+        let ascii_bytes: Vec<u8> = self
+            .bytes
+            .iter()
+            .map(|fhe_b| fhe_b.decrypt(client_key))
+            .collect();
+        String::from_utf8(ascii_bytes).unwrap()
+    }
+
+    pub fn to_upper(&self) -> Self {
+        Self {
+            bytes: self.bytes.iter().map(to_upper).collect(),
+        }
+    }
+
+    pub fn to_lower(&self) -> Self {
+        Self {
+            bytes: self.bytes.iter().map(to_lower).collect(),
+        }
+    }
+}
+
+
+
+// cargo test ascill_string_tests 来运行这个模块的测试层序
+#[cfg(test)]
+mod ascill_string_tests {
+    use super::*;
+
+    #[test]
+    fn string_works() {
+        println!("it_works");
+        let config = ConfigBuilder::default().build();
+        let (client_key, server_key) = generate_keys(config);
+
+        set_server_key(server_key);
+        let my_string = FheAsciiString::encrypt("Hello Deep, how is it going?", &client_key);
+        let verif_string = my_string.decrypt(&client_key);
+        println!("Start string: {verif_string}");
+
+        let my_string_upper = my_string.to_upper();
+        let verif_string = my_string_upper.decrypt(&client_key);
+        println!("Upper string: {verif_string}");
+        assert_eq!(verif_string, "HELLO DEEP, HOW IS IT GOING?");
+    
+        let my_string_lower = my_string_upper.to_lower();
+        let verif_string = my_string_lower.decrypt(&client_key);
+        println!("Lower string: {verif_string}");
+        assert_eq!(verif_string, "hello deep, how is it going?");
+    }
+
 }

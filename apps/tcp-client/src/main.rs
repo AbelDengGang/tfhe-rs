@@ -8,7 +8,6 @@ use tfhe::prelude::*;
 use drutil::*;
 
 
-
 struct GlobalCFG{
     client_key: ClientKey,
     server_key: ServerKey,
@@ -53,11 +52,14 @@ fn display_menu(menu: &Menu) {
 
 
 fn read_input() -> String {
+
     print!("Enter your choice: ");
     io::stdout().flush().unwrap();
     let mut input = String::new();
     io::stdin().read_line(&mut input).expect("Failed to read line");
     input.trim().to_string()
+
+
 }
 
 
@@ -233,6 +235,17 @@ mod tests {
         let decrypted = result.decrypt(&client_key) as u8;
         println!("decrypted  {}",decrypted);
     
+    }
+
+    #[test]
+    fn test_string(){
+        let (client_key, server_key) = generate_keys(ConfigBuilder::default());
+
+        set_server_key(server_key);
+        let my_string = FheAsciiString::encrypt("Hello Deep, how is it going?", &client_key);
+        let verif_string = my_string.decrypt(&client_key);
+        println!("Start string: {verif_string}");
+
     }
 
 }
