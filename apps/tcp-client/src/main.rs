@@ -7,6 +7,8 @@ use tfhe::{ ClientKey,  FheInt16, FheUint,  FheUint16Id, FheUint32};
 use tfhe::prelude::*;
 use drutil::*;
 
+
+
 struct GlobalCFG{
     client_key: ClientKey,
     server_key: ServerKey,
@@ -17,32 +19,7 @@ struct GlobalCFG{
     op: u16, // OP_ADD,OP_SUB
 }
 
-fn test_eq(){
 
-    let (client_key, server_key) = generate_keys(ConfigBuilder::default());
-
-    set_server_key(server_key);
-    let a = FheUint16::encrypt(5u16, &client_key);
-    let b = FheUint16::encrypt(2u16, &client_key);
-
-    let result = a.eq(&b);
-    let c: FheUint<FheUint16Id> = result.clone().cast_into();
-    let clear_c :u16= c.decrypt(&client_key);
-    println!("decrypted c {}",clear_c);
-    let decrypted = result.decrypt(&client_key) as u8;
-    println!("decrypted  {}",decrypted);
-
-
-    let a = FheUint16::encrypt(2u16, &client_key);
-    let b = FheUint16::encrypt(2u16, &client_key);
-
-    let result = a.eq(&b);
-    let decrypted = result.decrypt(&client_key) as u8;
-    println!("decrypted  {}",decrypted);
-
-
-
-}
 
 enum Menu {
     Root,
@@ -224,4 +201,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     main_menu(&mut global_cfg);
 
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // cargo test --profile release -- --nocapture
+    #[test]
+    fn test_eq(){
+
+        let (client_key, server_key) = generate_keys(ConfigBuilder::default());
+    
+        set_server_key(server_key);
+        let a = FheUint16::encrypt(5u16, &client_key);
+        let b = FheUint16::encrypt(2u16, &client_key);
+    
+        let result = a.eq(&b);
+        let c: FheUint<FheUint16Id> = result.clone().cast_into();
+        let clear_c :u16= c.decrypt(&client_key);
+        println!("decrypted c {}",clear_c);
+        let decrypted = result.decrypt(&client_key) as u8;
+        println!("decrypted  {}",decrypted);
+    
+    
+        let a = FheUint16::encrypt(2u16, &client_key);
+        let b = FheUint16::encrypt(2u16, &client_key);
+    
+        let result = a.eq(&b);
+        let decrypted = result.decrypt(&client_key) as u8;
+        println!("decrypted  {}",decrypted);
+    
+    }
+
 }
