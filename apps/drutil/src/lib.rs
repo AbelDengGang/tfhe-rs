@@ -595,13 +595,53 @@ impl FheAsciiString {
             let b = &other.bytes[index];
             let tmp_result = a.eq(b);
             result = &result & tmp_result;
+            index += 1;
         }
         return result
 
     }
 }
 
+pub fn fun_querry_asc_string(key_set :&Vec<FheAsciiString>, val_set : & Vec<FheAsciiString>, key : & FheAsciiString) -> FheAsciiString{
+    assert_eq!(key_set.len(), val_set.len());
+    let set_len = key_set.len();
+    let mut index = 0;
+    let mut max_string_len = 0;
+    while index < set_len {
+        if max_string_len < val_set[index].bytes.len(){
+            max_string_len = val_set[index].bytes.len();
+        }
+        index += 1;
+    }
 
+    let mut result: FheAsciiString = FheAsciiString{
+        bytes : Vec::new(),
+    };
+
+    // 初始化一个空字符串
+    let mut byte_index = 0;
+    let fu80 = FheUint8::encrypt_trivial(0 as u8);
+    while byte_index < max_string_len{
+        result.bytes.push(fu80.clone());
+        byte_index += 1;
+    }
+    let mut index = 0;
+    while index < set_len{
+        println!("compare key {index}/{set_len}");
+        let bool_result = key_set[index].eq(&key);
+        let u8_result: FheUint8 = bool_result.clone().cast_into();
+        let mut byte_index = 0;
+        while byte_index < max_string_len{
+            if byte_index < val_set[index].bytes.len() {
+                result.bytes[byte_index] = &result.bytes[byte_index] + (&u8_result * &val_set[index].bytes[byte_index]);
+            }
+            byte_index += 1;
+        }
+        index +=1;
+    }
+
+    result
+}
 
 // cargo test ascill_string_tests --profile release -- --nocapture 来运行这个模块的测试层序
 #[cfg(test)]
@@ -633,6 +673,56 @@ mod ascill_string_tests {
         println!("Receive string: {verif_string}");
         assert_eq!(verif_string, "HELLO DEEP, HOW IS IT GOING?");
     
+    }
+
+    //cargo test ascill_string_tests::string_query_test --profile release -- --nocapture
+    #[test]
+    fn string_query_test() {
+        println!("string_pack_test");
+        let config = ConfigBuilder::default().build();
+        let (client_key, server_key) = generate_keys(config);
+
+        set_server_key(server_key);
+
+        let mut key_vec:Vec<FheAsciiString> = Vec::new() ;
+        let mut val_vec:Vec<FheAsciiString> = Vec::new() ;
+        println!("Prepare key_vec");
+        let key = FheAsciiString::encrypt("wanger", &client_key);
+        key_vec.push(key);
+        let key = FheAsciiString::encrypt("zhangsan", &client_key);
+        key_vec.push(key);
+        let key = FheAsciiString::encrypt("lisi", &client_key);
+        key_vec.push(key);
+
+        println!("Prepare val_vec");
+        let val = FheAsciiString::encrypt("ge bi lao wang", &client_key);
+        val_vec.push(val);
+        let val = FheAsciiString::encrypt("haoren", &client_key);
+        val_vec.push(val);
+        let val = FheAsciiString::encrypt("lurenjia", &client_key);
+        val_vec.push(val);
+
+        println!("Prepare key");
+        let key = FheAsciiString::encrypt("wanger", &client_key);
+        println!("querrying");
+        let result_str = fun_querry_asc_string(&key_vec,&val_vec,&key);
+        let mut verif_string = result_str.decrypt(&client_key);
+        // 由于比较时填充了0，在检查的时候要去掉、0
+        verif_string.retain(|c| c != '\0');
+        println!("result  string: {verif_string}");
+        assert_eq!(verif_string, "ge bi lao wang");
+
+        println!("Prepare key");
+        let key = FheAsciiString::encrypt("zhangsan", &client_key);
+        println!("querrying");
+        let result_str = fun_querry_asc_string(&key_vec,&val_vec,&key);
+        let mut verif_string = result_str.decrypt(&client_key);
+        // 由于比较时填充了0，在检查的时候要去掉、0
+        verif_string.retain(|c| c != '\0');
+        println!("result  string: {verif_string}");
+        assert_eq!(verif_string, "haoren");
+
+
     }
 
     //cargo test ascill_string_tests::string_pack_test --profile release -- --nocapture
@@ -679,7 +769,7 @@ mod ascill_string_tests {
 
     }
 
-    //cargo test ascill_string_tests::string_encrypt_test --profile release -- --nocapture
+    //cargo test ascill_string_tests::string_eq_test --profile release -- --nocapture
     #[test]
     fn string_eq_test() {
         println!("string_eq_test");
