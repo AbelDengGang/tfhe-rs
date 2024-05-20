@@ -27,6 +27,9 @@ pub const PACK_TYPE_VALUES :u16 = 11;     // 传输map映射的value集合，以
 pub const PACK_TYPE_QUERY_KEY :u16 = 12;  // 在map映射中查询，
 pub const PACK_TYPE_IN_PROCESS: u16 = 13; // 表示正在处理过程中，客户端接受到这个数据包后面要继续读，直到收到其他的数据包才表明这次通讯结束
 const PACK_TYPE_CLIENT_KEY :u16 = 14;  // 传输client key,测试
+pub const PACK_TYPE_ADD_ITEM_ASC_STR :u16 = 15; // 传输key和val 都是FheAsciiString的包
+pub const PACK_TYPE_QUERY_ASC_STR :u16 = 16; // 查询，key是FheAsciiString
+pub const PACK_TYPE_REPLY_ASC_STR :u16 = 17; // 回复，value是FheAsciiString
 
 
 pub const OP_ADD  :u16 = 1;
@@ -40,6 +43,7 @@ pub enum DataType{
     CiptherUint16,
     CiptherUint8,
     CiptherBool,
+    CiptherAscStr,
 }
 
 //#[derive(Debug)] // 导出调试信息
@@ -69,6 +73,63 @@ pub fn from_pack_cipthertests_u16(mut pack:&CommPackage) ->(DataType,Vec<FheUint
     (dtype,data)
 }
 
+
+pub fn to_pack_add_map_item_asc_str<T:Serialize>(key:&T,val:&T,mut pack:&mut CommPackage){
+    pack.obj_number = 2;
+    pack.pack_type = PACK_TYPE_ADD_ITEM_ASC_STR;
+    pack.buff = Vec::new();
+    bincode::serialize_into(&mut pack.buff, &key).unwrap();
+    bincode::serialize_into(&mut pack.buff, &val).unwrap();
+}
+
+
+pub fn from_pack_add_map_item_asc_str<'de,T>(mut pack:&mut CommPackage) -> (T,T)
+    where
+        T: serde::de::DeserializeOwned,
+{
+
+    let mut serialized_data = Cursor::new(pack.buff.clone());
+    let key : T = bincode::deserialize_from(&mut serialized_data).unwrap();
+    let val : T = bincode::deserialize_from(&mut serialized_data).unwrap();
+    (key,val)
+}
+
+
+pub fn to_pack_query_asc_str<T:Serialize>(key:&T,mut pack:&mut CommPackage){
+    pack.obj_number = 1;
+    pack.pack_type = PACK_TYPE_QUERY_ASC_STR;
+    pack.buff = Vec::new();
+    bincode::serialize_into(&mut pack.buff, &key).unwrap();
+}
+
+
+pub fn from_pack_query_asc_str<'de,T>(mut pack:&mut CommPackage) -> T
+    where
+        T: serde::de::DeserializeOwned,
+{
+
+    let mut serialized_data = Cursor::new(pack.buff.clone());
+    let key : T = bincode::deserialize_from(&mut serialized_data).unwrap();
+    key
+}
+
+pub fn to_pack_reply_asc_str<T:Serialize>(val:&T,mut pack:&mut CommPackage){
+    pack.obj_number = 1;
+    pack.pack_type = PACK_TYPE_REPLY_ASC_STR;
+    pack.buff = Vec::new();
+    bincode::serialize_into(&mut pack.buff, &val).unwrap();
+}
+
+
+pub fn from_pack_reply_asc_str<'de,T>(mut pack:&mut CommPackage) -> T
+    where
+        T: serde::de::DeserializeOwned,
+{
+
+    let mut serialized_data = Cursor::new(pack.buff.clone());
+    let val : T = bincode::deserialize_from(&mut serialized_data).unwrap();
+    val
+}
 
 pub fn to_pack_serverkey<T:Serialize>(data:&T,mut pack:&mut CommPackage){
     pack.obj_number = 1;
@@ -574,6 +635,49 @@ mod ascill_string_tests {
     
     }
 
+    //cargo test ascill_string_tests::string_pack_test --profile release -- --nocapture
+    #[test]
+    fn string_pack_test() {
+        println!("string_pack_test");
+        let config = ConfigBuilder::default().build();
+        let (client_key, server_key) = generate_keys(config);
+
+        set_server_key(server_key);
+        let mut send_pack:CommPackage = CommPackage{
+            obj_number : 1,
+            pack_type:PACK_TYPE_MESSAGE,
+            buff : Vec::new(),
+        };
+
+        let key = FheAsciiString::encrypt("zhangsan", &client_key);
+        let value = FheAsciiString::encrypt("good man", &client_key);
+        {
+            to_pack_add_map_item_asc_str(&key,&value,&mut send_pack);
+
+            let (rsv_key, rsv_val)= from_pack_add_map_item_asc_str::<FheAsciiString>(&mut send_pack);
+    
+            let rsv_key_clear = rsv_key.decrypt(&client_key);
+            let rsv_val_clear = rsv_val.decrypt(&client_key);
+            assert_eq!(rsv_key_clear, "zhangsan");
+            assert_eq!(rsv_val_clear, "good man");
+        }
+
+        {
+
+            to_pack_query_asc_str(&key,&mut send_pack);
+            let rsv_key= from_pack_query_asc_str::<FheAsciiString>(&mut send_pack);
+            let rsv_key_clear = rsv_key.decrypt(&client_key);
+            assert_eq!(rsv_key_clear, "zhangsan");
+        }
+
+        {
+            to_pack_reply_asc_str(&value,&mut send_pack);
+            let rsv_value= from_pack_reply_asc_str::<FheAsciiString>(&mut send_pack);
+            let rsv_value_clear = rsv_value.decrypt(&client_key);
+            assert_eq!(rsv_value_clear, "good man");
+        }
+
+    }
 
     //cargo test ascill_string_tests::string_encrypt_test --profile release -- --nocapture
     #[test]
