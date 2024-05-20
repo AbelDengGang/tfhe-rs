@@ -30,8 +30,8 @@ pub const PACK_TYPE_IN_PROCESS: u16 = 13; // 表示正在处理过程中，客�
 const PACK_TYPE_CLIENT_KEY :u16 = 14;  // 传输client key,测试
 
 
-const OP_ADD  :u16 = 1;
-const OP_MUL  :u16 = 2;
+pub const OP_ADD  :u16 = 1;
+pub const OP_MUL  :u16 = 2;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum DataType{

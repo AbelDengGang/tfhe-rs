@@ -52,6 +52,18 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
                         to_pack_cipthertests(&DataType::CiptherUint16,&results,&mut send_pack);
                         send(&stream,&send_pack).unwrap();
                     },
+                    OP_MUL => {
+                        let result = &oprand1 * &oprand2;;
+                        let results = vec![result];
+                        let mut send_pack: CommPackage = CommPackage{
+                            pack_type:PACK_TYPE_UNKNOW,
+                            obj_number:0,
+                            buff:Vec::new(),
+                        };
+                        to_pack_cipthertests(&DataType::CiptherUint16,&results,&mut send_pack);
+                        send(&stream,&send_pack).unwrap();
+
+                    },
                     _ => {
                         let mut send_pack: CommPackage = CommPackage{
                             pack_type:PACK_TYPE_UNKNOW,
