@@ -112,6 +112,7 @@ fn main_menu(mut cfg:&mut  GlobalCFG) -> Menu {
             Menu::SubMenuNetwork => {
                 match read_input().as_str() {
                     "1" => {
+                        println!("Connecting to {}", cfg.server_url);
                         cfg.stream = Some(TcpStream::connect(cfg.server_url.clone()).unwrap());
                         let stream = cfg.stream.as_ref().unwrap();
 
@@ -156,7 +157,19 @@ fn main_menu(mut cfg:&mut  GlobalCFG) -> Menu {
                         }
                     
                     },
-                    "2" => println!("Option A2 selected"),
+                    "2" => {
+                        println!("Current server URL is {} input new URL",cfg.server_url);
+                        io::stdout().flush().unwrap();
+                        let mut input = String::new();
+                        io::stdin().read_line(&mut input).expect("Failed to read line");
+                        let URL = input.trim().to_string();
+                        if URL.is_empty() {
+
+                        }else{
+                            cfg.server_url = URL;
+                        }
+                    }
+                    
                     "3" => menu = Menu::Root,
                     _ => println!("Invalid option"),
                 }

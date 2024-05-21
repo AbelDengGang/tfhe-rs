@@ -120,10 +120,12 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
 
 
 fn listen_fn()-> Result<(), Error>{
-    let listener = TcpListener::bind("127.0.0.1:3000")?;
+    //let server_addr = "127.0.0.1:3000";
+    let server_addr = "0.0.0.0:3000";
+    let listener = TcpListener::bind(server_addr)?;
     let mut thread_vec: Vec<thread::JoinHandle<()>> = Vec::new();
 
-
+    println!("listen on :{server_addr}");
     for stream in listener.incoming() {
         let stream = stream.expect("failed!");
         println!("Connection established!");
