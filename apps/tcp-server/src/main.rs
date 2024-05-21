@@ -1,15 +1,31 @@
 use std::{net::{TcpListener,TcpStream}, io::{self,Read, Write,Cursor,Error},thread};
-use tfhe::{ ServerKey,  set_server_key, FheUint8};
+use tfhe::{ set_server_key, ClientKey, FheUint8, ServerKey};
 use tfhe::prelude::*;
 use drutil::*;
 
 
+struct GlobalServerCFG{
+    str_map:StringMap,   
+}
+
 fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
-    let mut buf = [0; 512];
 
+    // 我不知道如何在多线程中共享数据，出于简单考虑，每个线程维护一个config
+    let mut global_server_cfg:GlobalServerCFG = GlobalServerCFG{
+        str_map:StringMap{
+            key_vec:Vec::new(),
+            val_vec:Vec::new(),
+        }
+    };
 
+    let mut client_key:Option<ClientKey> = None;
     loop {
         let mut receive_pack: CommPackage = CommPackage{
+            pack_type:PACK_TYPE_UNKNOW,
+            obj_number:0,
+            buff:Vec::new(),
+        };
+        let mut send_pack: CommPackage = CommPackage{
             pack_type:PACK_TYPE_UNKNOW,
             obj_number:0,
             buff:Vec::new(),
@@ -30,11 +46,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
                 from_pack_msg(&mut msg,&mut receive_pack);
                 println!("receive message: {}",msg);
 
-                let mut send_pack: CommPackage = CommPackage{
-                    pack_type:PACK_TYPE_UNKNOW,
-                    obj_number:0,
-                    buff:Vec::new(),
-                };
+
                 to_pack_ack(&String::from("OK"),&mut send_pack);
                 send(&stream,&send_pack).unwrap();
             }
@@ -44,32 +56,20 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
                     OP_ADD => {
                         let result = oprand1 + oprand2;
                         let results = vec![result];
-                        let mut send_pack: CommPackage = CommPackage{
-                            pack_type:PACK_TYPE_UNKNOW,
-                            obj_number:0,
-                            buff:Vec::new(),
-                        };
+
                         to_pack_cipthertests(&DataType::CiptherUint16,&results,&mut send_pack);
                         send(&stream,&send_pack).unwrap();
                     },
                     OP_MUL => {
                         let result = &oprand1 * &oprand2;;
                         let results = vec![result];
-                        let mut send_pack: CommPackage = CommPackage{
-                            pack_type:PACK_TYPE_UNKNOW,
-                            obj_number:0,
-                            buff:Vec::new(),
-                        };
+
                         to_pack_cipthertests(&DataType::CiptherUint16,&results,&mut send_pack);
                         send(&stream,&send_pack).unwrap();
 
                     },
                     _ => {
-                        let mut send_pack: CommPackage = CommPackage{
-                            pack_type:PACK_TYPE_UNKNOW,
-                            obj_number:0,
-                            buff:Vec::new(),
-                        };
+
                         to_pack_ack(&String::from("OK"),&mut send_pack);
                         send(&stream,&send_pack).unwrap();
                     }
@@ -78,6 +78,27 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
             PACK_TYPE_SERVER_KEY => {
                 let mut server_key :ServerKey = from_pack_serverkey(&mut receive_pack);
                 set_server_key(server_key);
+
+                to_pack_ack(&String::from("OK"),&mut send_pack);
+                send(&stream,&send_pack).unwrap();
+            }
+            PACK_TYPE_ADD_ITEM_ASC_STR => {
+                let (k, v) = from_pack_add_map_item_asc_str::<FheAsciiString>(&mut receive_pack);
+                global_server_cfg.str_map.key_vec.push(k);
+                global_server_cfg.str_map.val_vec.push(v);
+
+                to_pack_ack(&String::from("OK"),&mut send_pack);
+                send(&stream,&send_pack).unwrap();
+            }
+            PACK_TYPE_QUERY_ASC_STR => {
+                let key : FheAsciiString= from_pack_query_asc_str(&mut receive_pack);
+                let result_str = fun_querry_asc_string(&global_server_cfg.str_map.key_vec,
+                    &global_server_cfg.str_map.val_vec,&key,&client_key);
+                to_pack_reply_asc_str(&result_str, &mut send_pack);
+                send(&stream,&send_pack).unwrap();
+            }
+            PACK_TYPE_CLIENT_KEY =>{
+                client_key = Some(from_pack_clientkey(&mut receive_pack));
                 let mut send_pack: CommPackage = CommPackage{
                     pack_type:PACK_TYPE_UNKNOW,
                     obj_number:0,
@@ -86,7 +107,6 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
                 to_pack_ack(&String::from("OK"),&mut send_pack);
                 send(&stream,&send_pack).unwrap();
             }
-
             _ =>{
 
             }
@@ -102,6 +122,7 @@ fn handle_client(mut stream: TcpStream) -> Result<(), Error>{
 fn listen_fn()-> Result<(), Error>{
     let listener = TcpListener::bind("127.0.0.1:3000")?;
     let mut thread_vec: Vec<thread::JoinHandle<()>> = Vec::new();
+
 
     for stream in listener.incoming() {
         let stream = stream.expect("failed!");

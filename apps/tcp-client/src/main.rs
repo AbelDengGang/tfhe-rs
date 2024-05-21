@@ -7,7 +7,10 @@ use tfhe::{ ClientKey,  FheInt16, FheUint,  FheUint16Id, FheUint32};
 use tfhe::prelude::*;
 use drutil::*;
 
-
+struct StringMapFlat{
+    key_vec:Vec<String>,
+    val_vec:Vec<String>,
+}
 struct GlobalCFG{
     client_key: ClientKey,
     server_key: ServerKey,
@@ -16,6 +19,8 @@ struct GlobalCFG{
     oprand1: u16,
     oprand2: u16,
     op: u16, // OP_ADD,OP_SUB
+    string_map: StringMap,
+    string_map_flat:StringMapFlat,
 }
 
 
@@ -24,6 +29,7 @@ enum Menu {
     Root,
     SubMenuNetwork,
     SubMenuOpration,
+    SubMenuDbOperation,
 }
 
 fn display_menu(menu: &Menu) {
@@ -32,6 +38,7 @@ fn display_menu(menu: &Menu) {
             println!("Main Menu:");
             println!("1. Network");
             println!("2. Opration");
+            println!("3. Db");
             println!("3. Exit");
         }
         Menu::SubMenuNetwork => {
@@ -41,11 +48,17 @@ fn display_menu(menu: &Menu) {
             println!("3. Go back to Main Menu");
         }
         Menu::SubMenuOpration => {
-            println!("Sub Menu B:");
+            println!("Sub Menu operation:");
             println!("1. oprand1");
             println!("2. oprand2");
             println!("3. oprantion");
             println!("4. Go back to Main Menu");
+        }
+        Menu::SubMenuDbOperation => {
+            println!("Sub Menu Db:");
+            println!("1. list flat db");
+            println!("2. query");
+            println!("3. Go back to Main Menu");
         }
     }
 }
@@ -62,6 +75,25 @@ fn read_input() -> String {
 
 }
 
+fn send_client_key(client_key:&ClientKey,stream:&TcpStream){
+    let mut send_pack:CommPackage = CommPackage{
+        obj_number : 1,
+        pack_type:PACK_TYPE_MESSAGE,
+        buff : Vec::new(),
+    };
+    to_pack_clientkey(client_key,&mut send_pack);
+    send(&stream,&send_pack).unwrap();
+
+    let mut receive_pack: CommPackage = CommPackage{
+        pack_type:PACK_TYPE_UNKNOW,
+        obj_number:0,
+        buff:Vec::new(),
+    };
+    receive(&stream,&mut receive_pack).unwrap(); // 当接受出错的时候，会直接从这里退出函数
+    let mut msg = String::new();
+    from_pack_ack(&mut msg, &mut receive_pack);
+    println!("From Server: {}",msg);
+}
 
 fn main_menu(mut cfg:&mut  GlobalCFG) -> Menu {
     let mut menu = Menu::Root;
@@ -72,7 +104,8 @@ fn main_menu(mut cfg:&mut  GlobalCFG) -> Menu {
                 match read_input().as_str() {
                     "1" => menu = Menu::SubMenuNetwork,
                     "2" => menu = Menu::SubMenuOpration,
-                    "3" => return Menu::Root,
+                    "3" => menu = Menu::SubMenuDbOperation,
+                    "4" => return Menu::Root,
                     _ => println!("Invalid option"),
                 }
             }
@@ -101,6 +134,26 @@ fn main_menu(mut cfg:&mut  GlobalCFG) -> Menu {
                         let mut msg = String::new();
                         from_pack_ack(&mut msg, &mut receive_pack);
                         println!("From Server: {}",msg);
+
+                        // only for debug
+                        //send_client_key(&cfg.client_key,&stream);
+
+                        // 发送数据库
+                        {
+                            let db_size = cfg.string_map.key_vec.len();
+                            let mut index = 0;
+                            while index < db_size{
+                                println!("Sending db item {}",index);
+                                to_pack_add_map_item_asc_str(&cfg.string_map.key_vec[index],&cfg.string_map.val_vec[index], &mut send_pack);
+                                send(&stream,&send_pack).unwrap();
+                                receive(&stream,&mut receive_pack).unwrap(); // 当接受出错的时候，会直接从这里退出函数
+                                let mut msg = String::new();
+                                from_pack_ack(&mut msg, &mut receive_pack);
+                                println!("Send item {},From Server: {}",index,msg);
+                                index +=1;
+                            }
+
+                        }
                     
                     },
                     "2" => println!("Option A2 selected"),
@@ -176,7 +229,61 @@ fn main_menu(mut cfg:&mut  GlobalCFG) -> Menu {
 
 
                     },
+                    
                     "4" => menu = Menu::Root,
+                    _ => println!("Invalid option"),
+                }
+            }
+            Menu::SubMenuDbOperation => {
+                match read_input().as_str() {
+                    "1" => {
+                        // 打印明文数据库
+                        {
+                            let db_size = cfg.string_map.key_vec.len();
+                            let mut index = 0;
+                            while index < db_size{
+                                println!("key:{}, value:{}",cfg.string_map_flat.key_vec[index],cfg.string_map_flat.val_vec[index]);
+                                index +=1;
+                            }
+
+                        }
+                        
+                    }
+                    "2" => {
+                        println!("input key to query:");
+                        io::stdout().flush().unwrap();
+                        let mut input = String::new();
+                        io::stdin().read_line(&mut input).expect("Failed to read line");
+                        let key_flat = input.trim().to_string();
+                    
+                        let key = FheAsciiString::encrypt(key_flat.as_str(), &cfg.client_key);
+                        let stream = cfg.stream.as_ref().unwrap();
+                        let mut send_pack:CommPackage = CommPackage{
+                            obj_number : 1,
+                            pack_type:PACK_TYPE_MESSAGE,
+                            buff : Vec::new(),
+                        };
+                        to_pack_query_asc_str(&key,&mut send_pack);
+                        send(&stream,&send_pack).unwrap();
+                        println!("waiting server reply");
+                        let mut receive_pack: CommPackage = CommPackage{
+                            pack_type:PACK_TYPE_UNKNOW,
+                            obj_number:0,
+                            buff:Vec::new(),
+                        };
+                        receive(&stream,&mut receive_pack).unwrap(); // 当接受出错的时候，会直接从这里退出函数
+                        println!("received server reply");
+                        if receive_pack.pack_type == PACK_TYPE_ACK{
+                            let mut msg = String::new();
+                            from_pack_ack(&mut msg, &mut receive_pack);
+                            println!("From Server: {}",msg);
+                        }else{
+                            let rsv_str= from_pack_reply_asc_str::<FheAsciiString>(&mut receive_pack);
+                            let rsv_value_clear = rsv_str.decrypt(&cfg.client_key);
+                            println!("Query reply from Server: {}",rsv_value_clear);
+                        }
+
+                    }
                     _ => println!("Invalid option"),
                 }
             }
@@ -184,13 +291,22 @@ fn main_menu(mut cfg:&mut  GlobalCFG) -> Menu {
     }
 }
 
+fn add_map_item(key_flat:&str, val_flat:&str, cfg:&mut GlobalCFG){
+    cfg.string_map_flat.key_vec.push(key_flat.to_string());
+    let key = FheAsciiString::encrypt(key_flat, &cfg.client_key);
+    cfg.string_map.key_vec.push(key);
+
+    cfg.string_map_flat.val_vec.push(val_flat.to_string());
+    let val: FheAsciiString = FheAsciiString::encrypt(val_flat, &cfg.client_key);
+    cfg.string_map.val_vec.push(val);
+
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("tcp-client:Hello, world!");
     println!("tcp-client:Creating key!");
     let config = ConfigBuilder::default().build();
     let ( client_key, server_key) = generate_keys(config);
-    let msg1 = 1u16;
-    let msg2 = 0u16;
     let mut global_cfg :GlobalCFG = GlobalCFG{
         client_key : client_key,
         server_key : server_key,
@@ -199,7 +315,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         oprand1 : 0,
         oprand2: 0,
         op : OP_ADD,
+        string_map: StringMap{
+            key_vec: Vec::new(),
+            val_vec: Vec::new(),
+        },
+        string_map_flat: StringMapFlat{
+            key_vec: Vec::new(),
+            val_vec: Vec::new(),
+        },
     };
+
+    add_map_item("wanger","ge bi lao wang",&mut global_cfg);
+    add_map_item("zhangsan","nice man",&mut global_cfg);
+    add_map_item("lisi","lu ren jia",&mut global_cfg);
+    add_map_item("张三","我是张三",&mut global_cfg);
+
+
+
     main_menu(&mut global_cfg);
 
     Ok(())

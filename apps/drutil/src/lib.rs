@@ -26,7 +26,7 @@ pub const PACK_TYPE_KEYS :u16 = 10;       // 传输map映射的key集合，以{{
 pub const PACK_TYPE_VALUES :u16 = 11;     // 传输map映射的value集合，以{{index,类型， 密文},...}的形式传输， index 要唯一。相同index则覆盖
 pub const PACK_TYPE_QUERY_KEY :u16 = 12;  // 在map映射中查询，
 pub const PACK_TYPE_IN_PROCESS: u16 = 13; // 表示正在处理过程中，客户端接受到这个数据包后面要继续读，直到收到其他的数据包才表明这次通讯结束
-const PACK_TYPE_CLIENT_KEY :u16 = 14;  // 传输client key,测试
+pub const PACK_TYPE_CLIENT_KEY :u16 = 14;  // 传输client key,测试
 pub const PACK_TYPE_ADD_ITEM_ASC_STR :u16 = 15; // 传输key和val 都是FheAsciiString的包
 pub const PACK_TYPE_QUERY_ASC_STR :u16 = 16; // 查询，key是FheAsciiString
 pub const PACK_TYPE_REPLY_ASC_STR :u16 = 17; // 回复，value是FheAsciiString
@@ -149,14 +149,14 @@ pub fn from_pack_serverkey<'de,T>(mut pack:&mut CommPackage) -> T
 }
 
 
-fn to_pack_clientkey<T:Serialize>(data:&T,mut pack:&mut CommPackage){
+pub fn to_pack_clientkey<T:Serialize>(data:&T,mut pack:&mut CommPackage){
     pack.obj_number = 1;
     pack.pack_type = PACK_TYPE_CLIENT_KEY;
     pack.buff = Vec::new();
     bincode::serialize_into(&mut pack.buff, &data).unwrap();
 }
 
-fn from_pack_clientkey<'de,T>(mut pack:&mut CommPackage) -> T
+pub fn from_pack_clientkey<'de,T>(mut pack:&mut CommPackage) -> T
     where
         T: serde::de::DeserializeOwned,
 {
@@ -537,6 +537,12 @@ pub struct FheAsciiString {
     pub bytes: Vec<FheUint8>,
 }
 
+pub struct StringMap{
+    pub key_vec:Vec<FheAsciiString>,
+    pub val_vec:Vec<FheAsciiString>,
+}
+
+
 fn to_upper(c: &FheUint8) -> FheUint8 {
     c - FheUint8::cast_from(c.gt(96) & c.lt(123)) * UP_LOW_DISTANCE
 }
@@ -547,10 +553,10 @@ fn to_lower(c: &FheUint8) -> FheUint8 {
 
 impl FheAsciiString {
     pub fn encrypt(string: &str, client_key: &ClientKey) -> Self {
-        assert!(
-            string.chars().all(|char| char.is_ascii()),
-            "The input string must only contain ascii letters"
-        );
+        // assert!(
+        //     string.chars().all(|char| char.is_ascii()),
+        //     "The input string must only contain ascii letters"
+        // );
 
         let fhe_bytes: Vec<FheUint8> = string
             .bytes()
@@ -602,7 +608,17 @@ impl FheAsciiString {
     }
 }
 
-pub fn fun_querry_asc_string(key_set :&Vec<FheAsciiString>, val_set : & Vec<FheAsciiString>, key : & FheAsciiString) -> FheAsciiString{
+pub fn try_debug_output(ciphertext:& FheAsciiString,  client_key:& Option<ClientKey>){
+    match client_key{
+        None => {}
+        Some(ck) =>{
+            println!("flat text is {}",ciphertext.decrypt(ck));
+        }
+    }
+}
+
+pub fn fun_querry_asc_string(key_set :&Vec<FheAsciiString>, val_set : & Vec<FheAsciiString>, key : & FheAsciiString, client_key:& Option<ClientKey>) -> FheAsciiString{
+    try_debug_output(key,client_key);
     assert_eq!(key_set.len(), val_set.len());
     let set_len = key_set.len();
     let mut index = 0;
@@ -639,6 +655,7 @@ pub fn fun_querry_asc_string(key_set :&Vec<FheAsciiString>, val_set : & Vec<FheA
         }
         index +=1;
     }
+    try_debug_output(&result,client_key);
 
     result
 }
@@ -648,6 +665,7 @@ pub fn fun_querry_asc_string(key_set :&Vec<FheAsciiString>, val_set : & Vec<FheA
 mod ascill_string_tests {
     use super::*;
 
+    //cargo test ascill_string_tests::string_encrypt_test --profile release -- --nocapture
     #[test]
     fn string_encrypt_test() {
         println!("string_encrypt_test");
@@ -655,6 +673,12 @@ mod ascill_string_tests {
         let (client_key, server_key) = generate_keys(config);
 
         set_server_key(server_key);
+        let my_string = FheAsciiString::encrypt("张三", &client_key);
+        let verif_string = my_string.decrypt(&client_key);
+        println!("Start string: {verif_string}");
+        assert_eq!(verif_string, "张三");
+
+
         let my_string = FheAsciiString::encrypt("Hello Deep, how is it going?", &client_key);
         let verif_string = my_string.decrypt(&client_key);
         println!("Start string: {verif_string}");
@@ -663,6 +687,8 @@ mod ascill_string_tests {
         let verif_string = my_string_upper.decrypt(&client_key);
         println!("Upper string: {verif_string}");
         assert_eq!(verif_string, "HELLO DEEP, HOW IS IT GOING?");
+
+
 
         // 序列化测试
         let mut buffer = Vec::new();
@@ -693,6 +719,8 @@ mod ascill_string_tests {
         key_vec.push(key);
         let key = FheAsciiString::encrypt("lisi", &client_key);
         key_vec.push(key);
+        let key = FheAsciiString::encrypt("张三", &client_key);
+        key_vec.push(key);
 
         println!("Prepare val_vec");
         let val = FheAsciiString::encrypt("ge bi lao wang", &client_key);
@@ -700,6 +728,8 @@ mod ascill_string_tests {
         let val = FheAsciiString::encrypt("haoren", &client_key);
         val_vec.push(val);
         let val = FheAsciiString::encrypt("lurenjia", &client_key);
+        val_vec.push(val);
+        let val = FheAsciiString::encrypt("我是张三", &client_key);
         val_vec.push(val);
 
         println!("Prepare key");
@@ -721,6 +751,17 @@ mod ascill_string_tests {
         verif_string.retain(|c| c != '\0');
         println!("result  string: {verif_string}");
         assert_eq!(verif_string, "haoren");
+
+        println!("Prepare key");
+        let key = FheAsciiString::encrypt("张三", &client_key);
+        println!("querrying");
+        let result_str = fun_querry_asc_string(&key_vec,&val_vec,&key);
+        let mut verif_string = result_str.decrypt(&client_key);
+        // 由于比较时填充了0，在检查的时候要去掉、0
+        verif_string.retain(|c| c != '\0');
+        println!("result  string: {verif_string}");
+        assert_eq!(verif_string, "我是张三");
+
 
 
     }
@@ -794,6 +835,13 @@ mod ascill_string_tests {
 
         let string1 = FheAsciiString::encrypt("nihao", &client_key);
         let string2 = FheAsciiString::encrypt("hello", &client_key);
+        let result = string1.eq(&string2);
+        let clr_reuslt = result.decrypt(&client_key);
+        assert_eq!(false, clr_reuslt);
+
+
+        let string1 = FheAsciiString::encrypt("张三", &client_key);
+        let string2 = FheAsciiString::encrypt("张三", &client_key);
         let result = string1.eq(&string2);
         let clr_reuslt = result.decrypt(&client_key);
         assert_eq!(false, clr_reuslt);
