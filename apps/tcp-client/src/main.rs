@@ -284,6 +284,7 @@ fn main_menu(mut cfg:&mut  GlobalCFG) -> Menu {
                         }
 
                     }
+                    "3" => menu = Menu::Root,
                     _ => println!("Invalid option"),
                 }
             }
