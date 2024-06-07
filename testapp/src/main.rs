@@ -183,7 +183,8 @@ fn test_shift(){
 
 fn test_mul(){
     println!("test_mul start!");    
-    let config = ConfigBuilder::default().build();
+    //let config = ConfigBuilder::default().build();
+    let config = ConfigBuilder::default_with_small_encryption().build();    // test code for boot strap -- key switch
 
     let (client_key, server_key) = generate_keys(config);
     set_server_key(server_key);
